@@ -90,4 +90,4 @@ mavlink_proto.msgid == 117 || mavlink_proto.msgid == 118 || mavlink_proto.msgid 
 Watch your beautiful logs arrive
 
 ### Future developments
-- Multiple backends: e.g. RobotoAI, DroneLogbook, Auterion Suite, Aloft etc
+- Multiple backends: e.g. RobotoAI, DroneLogbook, Auterion Suite, Aloft, Meala etc
