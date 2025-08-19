@@ -5,6 +5,7 @@
 #include <future>
 #include <regex>
 #include <fstream>
+#include "ServerInterface.hpp"
 
 namespace fs = std::filesystem;
 
@@ -27,6 +28,9 @@ LogLoader::LogLoader(const LogLoader::Settings& settings)
 		.db_path = _settings.application_directory + "local_server.db",
 		.upload_enabled = true, // Always upload to local server
 		.public_logs = true, // Public required true for searching using Web UI
+		.upload_service = UploadService::FlightReview, // Local server is always FlightReview,
+		.credentials_file = "" // FlightReview does not need credentials
+
 	};
 
 	// Setup remote server interface
@@ -37,8 +41,8 @@ LogLoader::LogLoader(const LogLoader::Settings& settings)
 		.db_path = _settings.application_directory + "remote_server.db",
 		.upload_enabled = settings.upload_enabled,
 		.public_logs = settings.public_logs,
-		.credentials_file = settings.credentials_file,
-		.upload_service = settings.upload_service
+		.upload_service = settings.upload_service,
+		.credentials_file = settings.credentials_file
 	};
 
 	_local_server = std::make_shared<ServerInterface>(local_server_settings);

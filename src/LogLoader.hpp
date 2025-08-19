@@ -8,14 +8,10 @@
 
 #include "ServerInterface.hpp"
 
-enum class UploadService {
-	FlightReview = 0,
-	Meala = 1
-};
-
 class LogLoader
 {
 public:
+
 	struct Settings {
 		std::string email;
 		std::string local_server;
@@ -24,8 +20,8 @@ public:
 		std::string application_directory;
 		bool upload_enabled;
 		bool public_logs;
-		std::string credentials_file;
 		UploadService upload_service;
+		std::string credentials_file;
 	};
 
 	LogLoader(const Settings& settings);

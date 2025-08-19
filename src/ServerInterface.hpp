@@ -6,6 +6,11 @@
 #include <mavsdk/plugins/log_files/log_files.h>
 #include <optional>
 
+enum class UploadService {
+	FlightReview = 0,
+	Meala = 1
+};
+
 class ServerInterface
 {
 public:
@@ -16,6 +21,8 @@ public:
 		std::string db_path;         // Path to this server's database
 		bool upload_enabled {};
 		bool public_logs {};
+		UploadService upload_service;
+		std::string credentials_file; // For Meala credentials
 	};
 
 	struct UploadResult {
@@ -60,14 +67,17 @@ public:
 	void start();
 	void stop();
 
-private:
+protected:
 	enum class Protocol {
 		Http,
 		Https
 	};
+	virtual UploadResult upload(const std::string& filepath);
+	Protocol _protocol {Protocol::Https};
+	Settings _settings;
 
+private:
 	void sanitize_url_and_determine_protocol();
-	UploadResult upload(const std::string& filepath);
 	bool server_reachable();
 
 	// Database operations
@@ -75,28 +85,27 @@ private:
 	bool add_to_blacklist(const std::string& uuid, const std::string& reason);
 	DatabaseEntry row_to_db_entry(sqlite3_stmt* stmt);
 
-	Settings _settings;
-	Protocol _protocol {Protocol::Https};
 	bool _should_exit = false;
 	sqlite3* _db = nullptr;
 };
 
 struct MealaCredentials {
-    std::string username;
-    std::string password;
-    std::string token;
-    std::string credentials_file;
+	std::string username;
+	std::string password;
+	std::string token;
+	std::string credentials_file;
 };
 
-class MealaServerInterface : public ServerInterface {
+class MealaServerInterface : public ServerInterface
+{
 public:
-    MealaServerInterface(const Settings& settings, const MealaCredentials& creds);
+	MealaServerInterface(const Settings& settings, const MealaCredentials& creds);
 
-    bool login();
-    UploadResult upload_log(const std::string& filepath) override;
+	bool login();
+	UploadResult upload(const std::string& filepath) override;
 
 private:
-    MealaCredentials _creds;
-    std::string _session_cookie;
-    bool _logged_in = false;
+	MealaCredentials _creds;
+	std::string _session_cookie;
+	bool _logged_in = false;
 };

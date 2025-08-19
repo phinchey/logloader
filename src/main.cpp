@@ -38,8 +38,8 @@ int main()
 		.application_directory = std::string(getenv("HOME")) + "/.local/share/logloader/",
 		.upload_enabled = config["upload_enabled"].value_or(false),
 		.public_logs = config["public_logs"].value_or(false),
-		.credentials_file = config["credentials_file"].value_or(std::string(getenv("HOME")) + "/.local/share/logloader/meala_creds.cert"),
-		.upload_service = static_cast<LogLoader::UploadService>(config["upload_service"].value_or(0)) // 0 for FlightReview, 1 for Meala
+		.upload_service = static_cast<UploadService>(config["upload_service"].value_or(UploadService::FlightReview)), // 0 for FlightReview, 1 for Meala
+		.credentials_file = config["credentials_file"].value_or(std::string(getenv("HOME")) + "/.local/share/logloader/meala_creds.cert")
 	};
 
 	_log_loader = std::make_shared<LogLoader>(settings);
