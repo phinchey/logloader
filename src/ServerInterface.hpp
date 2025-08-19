@@ -4,6 +4,7 @@
 #include <vector>
 #include <sqlite3.h>
 #include <mavsdk/plugins/log_files/log_files.h>
+#include <optional>
 
 class ServerInterface
 {
@@ -78,4 +79,24 @@ private:
 	Protocol _protocol {Protocol::Https};
 	bool _should_exit = false;
 	sqlite3* _db = nullptr;
+};
+
+struct MealaCredentials {
+    std::string username;
+    std::string password;
+    std::string token;
+    std::string credentials_file;
+};
+
+class MealaServerInterface : public ServerInterface {
+public:
+    MealaServerInterface(const Settings& settings, const MealaCredentials& creds);
+
+    bool login();
+    UploadResult upload_log(const std::string& filepath) override;
+
+private:
+    MealaCredentials _creds;
+    std::string _session_cookie;
+    bool _logged_in = false;
 };

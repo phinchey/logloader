@@ -37,10 +37,21 @@ LogLoader::LogLoader(const LogLoader::Settings& settings)
 		.db_path = _settings.application_directory + "remote_server.db",
 		.upload_enabled = settings.upload_enabled,
 		.public_logs = settings.public_logs,
+		.credentials_file = settings.credentials_file,
+		.upload_service = settings.upload_service
 	};
 
 	_local_server = std::make_shared<ServerInterface>(local_server_settings);
-	_remote_server = std::make_shared<ServerInterface>(remote_server_settings);
+
+	// _remote_server = std::make_shared<ServerInterface>(remote_server_settings);
+	if (_settings.upload_service == UploadService::Meala) {
+		MealaCredentials creds;
+		creds.credentials_file = _settings.credentials_file;
+		_remote_server = std::make_shared<MealaServerInterface>(remote_server_settings, creds);
+
+	} else {
+		_remote_server = std::make_shared<ServerInterface>(remote_server_settings);
+	}
 
 	std::cout << std::fixed << std::setprecision(8);
 

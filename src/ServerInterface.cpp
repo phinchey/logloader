@@ -11,6 +11,7 @@
 #include <functional>
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <httplib.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 
