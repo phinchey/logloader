@@ -66,7 +66,7 @@ A target's `backend` says which upload API it speaks. It is per target, so the l
 | `backend` | Server | Auth | Notes |
 | --- | --- | --- | --- |
 | `flight_review` (default) | [Flight Review](https://github.com/PX4/flight_review), e.g. [review.px4.io](https://review.px4.io) | None, or `api_key` on an authenticated instance | Records the `/plot_app?log=<uuid>` path it redirects to, which is what lets the UI link to the plot. `.BIN` is not accepted by review.px4.io |
-| `meala` | [Meala](https://www.apisdynamics.ca) | `credentials_file`, required | Logs in for a session cookie, then uploads in 5 MB chunks. Returns no per-log url, so nothing is recorded to link to |
+| `meala` | [Meala](https://apisdynamics.ca) ([API docs](https://apisdynamics.ca/apidocs/)) | `credentials_file`, required | Logs in for a session cookie, then uploads in 5 MB Dropzone-style chunks. Returns no per-log url, so nothing is recorded to link to |
 
 Switching a target's backend does not re-upload what is already up: a target is identified in the database by its name (`local`, `remote`), not by where it points.
 
@@ -76,11 +76,11 @@ To upload to Meala, sign up, download the account's JSON credentials, and point 
 [upload_remote]
 enabled = true
 backend = "meala"
-url = "https://www.apisdynamics.ca"
+url = "https://apisdynamics.ca"
 credentials_file = "/home/pilot/.config/ark/logloader/meala_creds.json"
 ```
 
-The credentials file is the one Meala hands out, `{"username": "...", "token": "..."}`. Give an absolute path: like every other path in the config, it is taken as written and `~` is not expanded. Meala has no anonymous upload, so a `meala` target with no `credentials_file` is disabled at startup with a warning rather than failing one login per upload pass. `email`, `public` and `api_key` are Flight Review's and are ignored.
+The credentials file is the one Meala hands out, `{"username": "...", "token": "..."}`, where the token is the API token from the account page. Give an absolute path: like every other path in the config, it is taken as written and `~` is not expanded. Meala has no anonymous upload, so a `meala` target with no `credentials_file` is disabled at startup with a warning rather than failing one login per upload pass. `email`, `public` and `api_key` are Flight Review's and are ignored.
 
 ### Configuration
 

@@ -77,6 +77,8 @@ std::optional<UploadTarget::Result> MealaUploadTarget::login()
 		return Result{Outcome::Unreachable, 0, "connection failed during login", ""};
 	}
 
+	// A refused login is documented as 400, but anything that is not a 200 leaves
+	// us without a session and will keep doing so until the credentials change.
 	if (response->status != 200) {
 		note_unauthorized();
 		return Result{Outcome::Unauthorized, response->status, "login was refused", ""};
@@ -89,8 +91,54 @@ std::optional<UploadTarget::Result> MealaUploadTarget::login()
 		return Result{Outcome::Unauthorized, response->status, "login returned no session cookie", ""};
 	}
 
+	// Set-Cookie carries attributes after the first ";" (HttpOnly, Path, and an
+	// Expires whose value contains a comma). Only the name=value pair belongs in
+	// a Cookie header; sending the attributes back would be sending junk pairs.
 	_session_cookie = response->get_header_value("Set-Cookie");
+	_session_cookie = _session_cookie.substr(0, _session_cookie.find(';'));
+
+	if (_session_cookie.empty()) {
+		note_unauthorized();
+		return Result{Outcome::Unauthorized, response->status, "login returned an empty session cookie", ""};
+	}
+
+	if (const auto problem = verify_session(client); problem.has_value()) {
+		_session_cookie.clear();
+		return problem;
+	}
+
 	_logged_in = true;
+	return std::nullopt;
+}
+
+std::optional<UploadTarget::Result> MealaUploadTarget::verify_session(httplib::Client& client)
+{
+	// A refused login is documented as a 400, but in practice Meala answers one
+	// with 200 and a session cookie all the same -- the session is simply not
+	// authenticated. Without this check the first thing to notice would be a
+	// chunk POST, so every upload pass would push a multi-megabyte body just to
+	// be told 401. This endpoint takes no parameters and answers in a few dozen
+	// bytes, which is a cheap way to find out before sending the log.
+	httplib::Headers headers;
+	headers.emplace("Cookie", _session_cookie);
+
+	const httplib::Result response = client.Post("/api/get-dashboard-shares", headers, "{}", "application/json");
+
+	// Only an explicit refusal stops the upload. This call is an optimisation,
+	// not a gate: if it fails for any other reason -- the endpoint moved, the
+	// server erred, the connection dropped -- the upload goes ahead and reports
+	// whatever it finds, exactly as it would have without the check.
+	if (response && (response->status == 401 || response->status == 403)) {
+		note_unauthorized();
+		return Result{Outcome::Unauthorized, response->status, "the credentials were not accepted", ""};
+	}
+
+	if (!response || response->status != 200) {
+		LOG_DEBUG("Could not confirm the Meala session ("
+			  << (response ? std::to_string(response->status) : "no response")
+			  << "); continuing with the upload");
+	}
+
 	return std::nullopt;
 }
 
@@ -173,10 +221,16 @@ UploadTarget::Result MealaUploadTarget::upload(const std::string& file_path)
 
 		const int status = response->status;
 
-		if (status == 200 || status == 201) {
+		// 200 is a chunk accepted (and, on the last one, the log processed). 202
+		// means the server has the bytes but its database was busy and will get to
+		// it later -- the log is up either way, so re-sending it would be a second
+		// copy rather than a retry.
+		if (status == 200 || status == 202) {
 			continue;
 		}
 
+		// 401 is an expired session; 403 is a lapsed subscription. Both are a
+		// human's problem and stable until they fix it.
 		if (status == 401 || status == 403) {
 			// The session expired mid-upload, or the account lost its access.
 			// Either way the next attempt logs in again from the top.
