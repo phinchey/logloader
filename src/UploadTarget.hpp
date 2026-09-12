@@ -1,13 +1,19 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
+#include <optional>
 #include <string>
 
 #include "Config.hpp"
 
-// One Flight Review endpoint. Knows how to reach it and how to post a log to
-// it; it holds no record of which logs exist or what has been uploaded, which
-// is what LogDatabase is for.
+// One upload endpoint. Knows how to reach it and how to post a log to it; it
+// holds no record of which logs exist or what has been uploaded, which is what
+// LogDatabase is for.
+//
+// This class speaks Flight Review's upload API, which is the default and the
+// only one that needs no account. Another backend subclasses it and overrides
+// upload(); make_upload_target() builds the one the config asks for.
 class UploadTarget
 {
 public:
@@ -37,21 +43,36 @@ public:
 	};
 
 	explicit UploadTarget(const UploadTargetConfig& config);
+	virtual ~UploadTarget() = default;
+
+	UploadTarget(const UploadTarget&) = delete;
+	UploadTarget& operator=(const UploadTarget&) = delete;
 
 	const std::string& name() const { return _config.name; }
 	const std::string& url() const { return _config.url; }
 	bool enabled() const { return _config.enabled; }
 
-	Result upload(const std::string& file_path);
+	virtual Result upload(const std::string& file_path);
 
-private:
+protected:
 	// Probes at most once per cooldown and logs only on the down/up
 	// transitions, so a server that is simply off does not produce one failure
 	// line per pending log.
 	bool reachable();
 
+	// A subclass reports a 401/403 through these so every backend gets the same
+	// cooldown; see kUnauthorizedCooldown.
+	void note_unauthorized();
+	bool in_unauthorized_cooldown() const;
+
+	// Common to every backend: the local file has to exist and have something in
+	// it before any of them is worth opening a socket for. Returns an unset
+	// optional when the file is fit to upload.
+	std::optional<Result> check_local_file(const std::string& file_path, size_t& size) const;
+
 	UploadTargetConfig _config;
 
+private:
 	static constexpr auto kUnreachableCooldown = std::chrono::seconds(60);
 	std::chrono::steady_clock::time_point _unreachable_until {};
 	bool _reported_unreachable {false};
@@ -62,3 +83,6 @@ private:
 	static constexpr auto kUnauthorizedCooldown = std::chrono::minutes(5);
 	std::chrono::steady_clock::time_point _unauthorized_until {};
 };
+
+// Builds the target config.backend asks for.
+std::unique_ptr<UploadTarget> make_upload_target(const UploadTargetConfig& config);

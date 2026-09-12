@@ -1,6 +1,7 @@
 #include "Config.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
@@ -59,6 +60,65 @@ T value_or(const Preferred& preferred, const Legacy& legacy, T fallback)
 	}
 
 	return fallback;
+}
+
+} // namespace
+
+bool parse_upload_backend(const std::string& text, UploadBackend& backend)
+{
+	std::string key;
+
+	// Accept "flight_review", "flight-review" and "flightreview" alike; the
+	// separator is the kind of thing an operator gets wrong once per install.
+	for (const char c : text) {
+		if (c != '_' && c != '-' && c != ' ') {
+			key += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		}
+	}
+
+	if (key == "flightreview") {
+		backend = UploadBackend::FlightReview;
+		return true;
+	}
+
+	if (key == "meala") {
+		backend = UploadBackend::Meala;
+		return true;
+	}
+
+	return false;
+}
+
+const char* to_string(UploadBackend backend)
+{
+	switch (backend) {
+	case UploadBackend::Meala:
+		return "meala";
+
+	case UploadBackend::FlightReview:
+	default:
+		return "flight_review";
+	}
+}
+
+namespace
+{
+
+// Reads one target's backend, warning rather than throwing on a typo: an
+// unreadable backend name should not stop the daemon from starting with the
+// default one.
+void load_backend(const toml::node_view<toml::node>& table, UploadTargetConfig& target)
+{
+	const auto text = table["backend"].value<std::string>();
+
+	if (!text.has_value() || text->empty()) {
+		return;
+	}
+
+	if (!parse_upload_backend(*text, target.backend)) {
+		LOG_WARN("Unknown backend \"" << *text << "\" for upload target " << target.name
+			 << ", using " << to_string(target.backend));
+	}
 }
 
 } // namespace
@@ -147,6 +207,8 @@ Config load_config(const std::string& path)
 	config.local.public_logs = local["public"].value_or(true);
 	config.local.email = local["email"].value_or("");
 	config.local.api_key = trim(local["api_key"].value_or<std::string>(""));
+	load_backend(local, config.local);
+	config.local.credentials_file = trim(local["credentials_file"].value_or<std::string>(""));
 
 	config.remote.name = kTargetRemote;
 	config.remote.url = value_or<std::string>(remote["url"], file["remote_server"], "https://review.px4.io");
@@ -154,6 +216,8 @@ Config load_config(const std::string& path)
 	config.remote.public_logs = value_or<bool>(remote["public"], file["public_logs"], false);
 	config.remote.email = value_or<std::string>(remote["email"], file["email"], "");
 	config.remote.api_key = trim(value_or<std::string>(remote["api_key"], file["remote_api_key"], ""));
+	load_backend(remote, config.remote);
+	config.remote.credentials_file = trim(remote["credentials_file"].value_or<std::string>(""));
 
 	if (config.local.url.empty()) {
 		config.local.enabled = false;
@@ -161,6 +225,17 @@ Config load_config(const std::string& path)
 
 	if (config.remote.url.empty()) {
 		config.remote.enabled = false;
+	}
+
+	// Meala authenticates every upload, so a target without credentials would
+	// fail the login once per pass forever. Saying so at startup beats one
+	// warning per upload interval.
+	for (UploadTargetConfig* target : {&config.local, &config.remote}) {
+		if (target->enabled && target->backend == UploadBackend::Meala && target->credentials_file.empty()) {
+			LOG_WARN("Upload target " << target->name << " uses the meala backend but has no "
+				 "credentials_file; disabling it");
+			target->enabled = false;
+		}
 	}
 
 	if (g_used_legacy_key) {

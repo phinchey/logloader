@@ -10,14 +10,33 @@
 constexpr const char* kTargetLocal = "local";
 constexpr const char* kTargetRemote = "remote";
 
+// Which upload API a target speaks. The name is a target's identity in the
+// database, so it stays "remote" whatever it is pointed at; this is how the
+// bytes get there.
+enum class UploadBackend {
+	FlightReview,
+	Meala,
+};
+
+// Parses the config spelling ("flight_review", "meala"). False leaves the
+// backend untouched and tells the caller the text was not recognised.
+bool parse_upload_backend(const std::string& text, UploadBackend& backend);
+
+const char* to_string(UploadBackend backend);
+
 struct UploadTargetConfig {
 	std::string name;
 	bool enabled {false};
+	UploadBackend backend {UploadBackend::FlightReview};
 	std::string url;
 	std::string email;
 	// Per-account key for authenticated Flight Review instances. Empty means
 	// no auth headers are sent at all, which is what open servers expect.
 	std::string api_key;
+	// Meala only: JSON file holding the account's username and token, as
+	// downloaded from the Meala account page. Meala has no anonymous upload, so
+	// a target without this cannot be enabled.
+	std::string credentials_file;
 	bool public_logs {false};
 };
 
