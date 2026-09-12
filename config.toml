@@ -61,3 +61,22 @@ public = false
 # Per-account key for an authenticated Flight Review. When empty no
 # authorization headers are sent at all, which is what open servers expect.
 api_key = ""
+
+# Which upload API this target speaks: "flight_review" (the default) or
+# "meala". Only the transport changes -- the target is still "remote"
+# everywhere else, so switching backends does not re-upload what is already up.
+#
+# For Meala, point url at the Meala server and credentials_file at the JSON
+# credentials downloaded from your Meala account:
+#
+#     backend = "meala"
+#     url = "https://www.apisdynamics.ca"
+#     credentials_file = "/home/pilot/.config/ark/logloader/meala_creds.json"
+#
+# Paths are taken as written, so give an absolute one -- "~" is not expanded.
+#
+# Meala has no anonymous upload, so a meala target without credentials_file is
+# disabled at startup. email, public and api_key are Flight Review's and are
+# ignored by it.
+backend = "flight_review"
+credentials_file = ""

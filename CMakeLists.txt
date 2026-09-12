@@ -34,6 +34,7 @@ add_executable(${PROJECT_NAME}
     src/Log.cpp
     src/LogDatabase.cpp
     src/LogLoader.cpp
+    src/MealaUploadTarget.cpp
     src/Sqlite.cpp
     src/StatusBoard.cpp
     src/UploadTarget.cpp)

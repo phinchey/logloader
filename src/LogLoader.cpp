@@ -53,7 +53,7 @@ LogLoader::LogLoader(const Config& config)
 	fs::create_directories(_config.logs_directory, ec);
 
 	for (const auto* target : _config.targets()) {
-		_targets.push_back(std::make_unique<UploadTarget>(*target));
+		_targets.push_back(make_upload_target(*target));
 	}
 }
 

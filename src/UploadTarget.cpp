@@ -1,5 +1,6 @@
 #include "UploadTarget.hpp"
 #include "Log.hpp"
+#include "MealaUploadTarget.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -58,6 +59,51 @@ UploadTarget::UploadTarget(const UploadTargetConfig& config)
 	}
 }
 
+void UploadTarget::note_unauthorized()
+{
+	_unauthorized_until = std::chrono::steady_clock::now() + kUnauthorizedCooldown;
+}
+
+bool UploadTarget::in_unauthorized_cooldown() const
+{
+	return std::chrono::steady_clock::now() < _unauthorized_until;
+}
+
+std::optional<UploadTarget::Result> UploadTarget::check_local_file(const std::string& file_path, size_t& size) const
+{
+	std::error_code ec;
+
+	if (!fs::exists(file_path, ec)) {
+		return Result{Outcome::Missing, 0, "local file is missing: " + file_path, ""};
+	}
+
+	size = fs::file_size(file_path, ec);
+
+	if (ec) {
+		return Result{Outcome::Missing, 0, "cannot stat local file: " + file_path, ""};
+	}
+
+	// Not Missing: re-fetching a log the vehicle reports as zero bytes would
+	// download nothing, succeed, and come straight back here forever.
+	if (size == 0) {
+		return Result{Outcome::Rejected, 0, "log is empty: " + file_path, ""};
+	}
+
+	return std::nullopt;
+}
+
+std::unique_ptr<UploadTarget> make_upload_target(const UploadTargetConfig& config)
+{
+	switch (config.backend) {
+	case UploadBackend::Meala:
+		return std::make_unique<MealaUploadTarget>(config);
+
+	case UploadBackend::FlightReview:
+	default:
+		return std::make_unique<UploadTarget>(config);
+	}
+}
+
 bool UploadTarget::reachable()
 {
 	const auto now = std::chrono::steady_clock::now();
@@ -103,26 +149,14 @@ UploadTarget::Result UploadTarget::upload(const std::string& file_path)
 	// Reported once when the 401/403 arrived; repeating a multi-megabyte POST
 	// every upload interval just to be told no again is the spam this daemon
 	// exists to avoid. Unreachable keeps the caller quiet and the log queued.
-	if (std::chrono::steady_clock::now() < _unauthorized_until) {
+	if (in_unauthorized_cooldown()) {
 		return {Outcome::Unreachable, 0, "waiting out an unauthorized response", ""};
 	}
 
-	std::error_code ec;
+	size_t size = 0;
 
-	if (!fs::exists(file_path, ec)) {
-		return {Outcome::Missing, 0, "local file is missing: " + file_path, ""};
-	}
-
-	const auto size = fs::file_size(file_path, ec);
-
-	if (ec) {
-		return {Outcome::Missing, 0, "cannot stat local file: " + file_path, ""};
-	}
-
-	// Not Missing: re-fetching a log the vehicle reports as zero bytes would
-	// download nothing, succeed, and come straight back here forever.
-	if (size == 0) {
-		return {Outcome::Rejected, 0, "log is empty: " + file_path, ""};
+	if (const auto problem = check_local_file(file_path, size); problem.has_value()) {
+		return *problem;
 	}
 
 	if (!reachable()) {
@@ -196,7 +230,7 @@ UploadTarget::Result UploadTarget::upload(const std::string& file_path)
 		const size_t in_file = offset - prologue.size();
 
 		if (in_file < size) {
-			const size_t n = std::min(kChunk, static_cast<size_t>(size) - in_file);
+			const size_t n = std::min(kChunk, size - in_file);
 			std::vector<char> buffer(n);
 			file->seekg(static_cast<std::streamoff>(in_file));
 
@@ -230,7 +264,7 @@ UploadTarget::Result UploadTarget::upload(const std::string& file_path)
 	const std::string detail = one_line(response->body);
 
 	if (status == 401 || status == 403) {
-		_unauthorized_until = std::chrono::steady_clock::now() + kUnauthorizedCooldown;
+		note_unauthorized();
 		return {Outcome::Unauthorized, status, detail.empty() ? "not authorized" : detail, ""};
 	}
 

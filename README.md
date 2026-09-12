@@ -1,6 +1,6 @@
 ![image](logloader_logo.png)
 
-Downloads flight logs from the vehicle over MAVLink FTP and uploads them to a local Flight Review and, optionally, a remote one. Works with PX4 (`.ulg`) and ArduPilot (`.BIN`).
+Downloads flight logs from the vehicle over MAVLink FTP and uploads them to a local Flight Review and, optionally, a remote server. Works with PX4 (`.ulg`) and ArduPilot (`.BIN`).
 
 ### What it fetches, and when
 
@@ -59,6 +59,29 @@ Downloads are staged in a temporary directory and only moved next to the finishe
 
 Older versions kept a database per server and identified logs by the timestamp `LOG_ENTRY` reported, which MAVLink FTP cannot reproduce. On first start `local_server.db` and `remote_server.db` are imported into a single `logloader.db` and their rows matched against the FTP listing by size, so logs already downloaded and uploaded are not fetched or uploaded a second time. The old files are left untouched.
 
+### Upload backends
+
+A target's `backend` says which upload API it speaks. It is per target, so the local Flight Review on the companion and the remote server do not have to be the same kind of thing.
+
+| `backend` | Server | Auth | Notes |
+| --- | --- | --- | --- |
+| `flight_review` (default) | [Flight Review](https://github.com/PX4/flight_review), e.g. [review.px4.io](https://review.px4.io) | None, or `api_key` on an authenticated instance | Records the `/plot_app?log=<uuid>` path it redirects to, which is what lets the UI link to the plot. `.BIN` is not accepted by review.px4.io |
+| `meala` | [Meala](https://www.apisdynamics.ca) | `credentials_file`, required | Logs in for a session cookie, then uploads in 5 MB chunks. Returns no per-log url, so nothing is recorded to link to |
+
+Switching a target's backend does not re-upload what is already up: a target is identified in the database by its name (`local`, `remote`), not by where it points.
+
+To upload to Meala, sign up, download the account's JSON credentials, and point a target at it:
+
+```toml
+[upload_remote]
+enabled = true
+backend = "meala"
+url = "https://www.apisdynamics.ca"
+credentials_file = "/home/pilot/.config/ark/logloader/meala_creds.json"
+```
+
+The credentials file is the one Meala hands out, `{"username": "...", "token": "..."}`. Give an absolute path: like every other path in the config, it is taken as written and `~` is not expanded. Meala has no anonymous upload, so a `meala` target with no `credentials_file` is disabled at startup with a warning rather than failing one login per upload pass. `email`, `public` and `api_key` are Flight Review's and are ignored.
+
 ### Configuration
 
 `config.toml`, in full, is documented inline in the shipped file. The keys:
@@ -78,6 +101,8 @@ Older versions kept a database per server and identified logs by the timestamp `
 | `upload.interval` | `10` | Seconds between upload passes |
 | `upload_local.*` | enabled, `http://127.0.0.1:5006` | Flight Review on the companion |
 | `upload_remote.*` | disabled, `https://review.px4.io` | `url`, `email`, `public`, `api_key` |
+| `*.backend` | `flight_review` | Upload API this target speaks; see above |
+| `*.credentials_file` | `""` | Meala account credentials; required by that backend |
 
 Tables are one level deep on purpose: ARK-OS's config editor renders exactly that, and a setting an operator cannot reach from the web UI may as well not exist.
 
@@ -152,4 +177,4 @@ make install
 
 ### Future developments
 - Resume interrupted transfers rather than restarting them.
-- Multiple backends: e.g. RobotoAI, DroneLogbook, Auterion Suite, Aloft.
+- Further upload backends: e.g. RobotoAI, DroneLogbook, Auterion Suite, Aloft.
