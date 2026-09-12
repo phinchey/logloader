@@ -1,69 +1,122 @@
-#include "LogLoader.hpp"
-#include "Log.hpp"
-#include <signal.h>
+#include <atomic>
+#include <cstdio>
+#include <filesystem>
 #include <iostream>
-#include <toml.hpp>
+#include <thread>
 
-static void signal_handler(int signum);
+#include <csignal>
+#include <ctime>
+#include <pthread.h>
 
-std::atomic<bool> _should_exit = false;
-std::shared_ptr<LogLoader> _log_loader;
+#include "ApiServer.hpp"
+#include "Config.hpp"
+#include "Log.hpp"
+#include "LogLoader.hpp"
 
-int main()
+namespace
 {
-	signal(SIGINT, signal_handler);
-	signal(SIGTERM, signal_handler);
-	setbuf(stdout, NULL); // Disable stdout buffering
 
-	toml::table config;
-
-	try {
-		config = toml::parse_file(std::string(getenv("HOME")) + "/.local/share/logloader/config.toml");
-
-	} catch (const toml::parse_error& err) {
-		std::cerr << "Parsing failed:\n" << err << "\n";
-		return -1;
-
-	} catch (const std::exception& err) {
-		std::cerr << "Error: " << err.what() << "\n";
-		return -1;
-	}
-
-	// Setup the LogLoader
-	LogLoader::Settings settings = {
-		.email = config["email"].value_or(""),
-		.local_server = config["local_server"].value_or("http://127.0.0.1:5006"),
-		.remote_server = config["remote_server"].value_or("https://logs.px4.io"),
-		.mavsdk_connection_url = config["connection_url"].value_or("0.0.0"),
-		.application_directory = std::string(getenv("HOME")) + "/.local/share/logloader/",
-		.upload_enabled = config["upload_enabled"].value_or(false),
-		.public_logs = config["public_logs"].value_or(false),
-		.upload_service = static_cast<UploadService>(config["upload_service"].value_or(UploadService::FlightReview)), // 0 for FlightReview, 1 for Meala
-		.credentials_file = config["credentials_file"].value_or(std::string(getenv("HOME")) + "/.local/share/logloader/meala_creds.cert")
-	};
-
-	_log_loader = std::make_shared<LogLoader>(settings);
-
-	bool connected = false;
-
-	while (!_should_exit && !connected) {
-		connected = _log_loader->wait_for_mavsdk_connection(3);
-	}
-
-	if (!_should_exit && connected) {
-		_log_loader->run();
-	}
-
-	LOG("Exiting.");
-
-	return 0;
+void print_usage()
+{
+	std::cout
+			<< "logloader - download flight logs over MAVLink FTP and upload them to Flight Review\n\n"
+			<< "  --config <path>   configuration file to use\n"
+			<< "  --help            show this message\n\n"
+			<< "Without --config, ~/.config/ark/logloader/config.toml is used when it exists,\n"
+			<< "otherwise /opt/ark/share/logloader/config.toml.\n";
 }
 
-static void signal_handler(int signum)
+// SIGINT/SIGTERM are blocked in every thread and consumed here instead. A
+// handler cannot safely take a lock or signal a condition variable, and stopping
+// cleanly needs both.
+std::thread start_signal_thread(const sigset_t& mask, const std::atomic<bool>& running,
+				const std::function<void()>& on_signal)
 {
-	(void)signum;
+	return std::thread([&mask, &running, on_signal] {
+		const timespec timeout {0, 200 * 1000 * 1000};
 
-	if (_log_loader.get()) _log_loader->stop();
+		while (running.load())
+		{
+			siginfo_t info {};
+			const int signum = sigtimedwait(&mask, &info, &timeout);
 
-	_should_exit = true;
+			if (signum > 0) {
+				LOG("Received signal " << signum << ", shutting down");
+				on_signal();
+				return;
+			}
+		}
+	});
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+	setbuf(stdout, nullptr); // journald wants lines as they happen
+
+	for (int i = 1; i < argc; i++) {
+		const std::string arg = argv[i];
+
+		if (arg == "--help" || arg == "-h") {
+			print_usage();
+			return 0;
+		}
+	}
+
+	const std::string config_path = resolve_config_path(argc, argv);
+	Config config;
+
+	try {
+		config = load_config(config_path);
+
+	} catch (const std::exception& error) {
+		LOG_ERROR(error.what());
+		return 1;
+	}
+
+	logging::set_level(config.log_level);
+	LOG("logloader starting, configuration from " << config_path);
+
+	std::error_code ec;
+	std::filesystem::create_directories(config.logs_directory, ec);
+
+	if (ec) {
+		LOG_ERROR("Cannot create " << config.logs_directory << ": " << ec.message());
+		return 1;
+	}
+
+	sigset_t mask;
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGINT);
+	sigaddset(&mask, SIGTERM);
+	pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+
+	LogLoader loader(config);
+
+	if (!loader.database_ok()) {
+		return 1;
+	}
+
+	ApiServer api({config.api_bind, config.api_port}, loader);
+
+	// Serve before connecting, so the UI can say the vehicle is not there yet
+	// rather than failing to load at all.
+	if (config.api_enabled && !api.start()) {
+		return 1;
+	}
+
+	std::atomic<bool> running {true};
+	std::thread signals = start_signal_thread(mask, running, [&loader] { loader.stop(); });
+
+	if (loader.connect()) {
+		loader.run();
+	}
+
+	api.stop();
+	running = false;
+	signals.join();
+
+	LOG("logloader stopped");
+	return 0;
 }
