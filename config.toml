@@ -70,7 +70,7 @@ api_key = ""
 # credentials downloaded from your Meala account:
 #
 #     backend = "meala"
-#     url = "https://www.apisdynamics.ca"
+#     url = "https://apisdynamics.ca"
 #     credentials_file = "/home/pilot/.config/ark/logloader/meala_creds.json"
 #
 # Paths are taken as written, so give an absolute one -- "~" is not expanded.

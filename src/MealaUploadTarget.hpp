@@ -5,6 +5,11 @@
 
 #include "UploadTarget.hpp"
 
+namespace httplib
+{
+class Client;
+}
+
 // One Meala account, as read from the JSON credentials file the Meala account
 // page hands out:
 //
@@ -36,6 +41,10 @@ private:
 	// Read on the first login rather than at construction, so a credentials file
 	// that appears after logloader started is picked up on the next attempt.
 	std::optional<Result> load_credentials();
+
+	// Confirms the session the login handed back is actually authenticated; see
+	// the comment on the definition for why a 200 from /login is not enough.
+	std::optional<Result> verify_session(httplib::Client& client);
 
 	MealaCredentials _credentials;
 	std::string _session_cookie;
