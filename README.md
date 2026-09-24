@@ -78,6 +78,13 @@ enabled = true
 backend = "meala"
 url = "https://apisdynamics.ca"
 credentials_file = "/home/pilot/.config/ark/logloader/meala_creds.json"
+
+# Filled in on every log this target uploads.
+comment = "Uploaded by logloader"
+battery = ""
+pic = ""
+gso = ""
+vehicle_id = ""
 ```
 
 The credentials file is the one Meala hands out, `{"username": "...", "token": "..."}`, where the token is the API token from the account page. Give an absolute path: like every other path in the config, it is taken as written and `~` is not expanded. Meala has no anonymous upload, so a `meala` target with no `credentials_file` is disabled at startup with a warning rather than failing one login per upload pass. `email`, `public` and `api_key` are Flight Review's and are ignored.
@@ -103,6 +110,7 @@ The credentials file is the one Meala hands out, `{"username": "...", "token": "
 | `upload_remote.*` | disabled, `https://review.px4.io` | `url`, `email`, `public`, `api_key` |
 | `*.backend` | `flight_review` | Upload API this target speaks; see above |
 | `*.credentials_file` | `""` | Meala account credentials; required by that backend |
+| `*.comment` / `battery` / `pic` / `gso` / `vehicle_id` | `Uploaded by logloader` / `""` | Meala form fields sent with every upload |
 
 Tables are one level deep on purpose: ARK-OS's config editor renders exactly that, and a setting an operator cannot reach from the web UI may as well not exist.
 

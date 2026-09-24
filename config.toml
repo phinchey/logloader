@@ -80,3 +80,13 @@ api_key = ""
 # ignored by it.
 backend = "flight_review"
 credentials_file = ""
+
+# Meala only: sent with every log this target uploads, as the flight's details
+# on Meala. Edit these to match the aircraft and crew; empty fields are sent
+# empty. comment is the log's comment, battery the pack flown, pic the pilot in
+# command, gso the ground safety officer, vehicle_id the aircraft.
+comment = "Uploaded by logloader"
+battery = ""
+pic = ""
+gso = ""
+vehicle_id = ""

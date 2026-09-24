@@ -121,6 +121,37 @@ void load_backend(const toml::node_view<toml::node>& table, UploadTargetConfig& 
 	}
 }
 
+// Meala's form fields are free text, but an operator writing vehicle_id = 3
+// means the same as vehicle_id = "3"; refusing the bare number would silently
+// send an empty field instead.
+std::string text_or(const toml::node_view<toml::node>& node, const std::string& fallback)
+{
+	if (auto value = node.value<std::string>(); value.has_value()) {
+		return trim(*value);
+	}
+
+	if (auto value = node.value<int64_t>(); value.has_value()) {
+		return std::to_string(*value);
+	}
+
+	if (auto value = node.value<double>(); value.has_value()) {
+		std::ostringstream text;
+		text << *value;
+		return text.str();
+	}
+
+	return fallback;
+}
+
+void load_meala_fields(const toml::node_view<toml::node>& table, UploadTargetConfig& target)
+{
+	target.meala_comment = text_or(table["comment"], target.meala_comment);
+	target.meala_battery = text_or(table["battery"], target.meala_battery);
+	target.meala_pic = text_or(table["pic"], target.meala_pic);
+	target.meala_gso = text_or(table["gso"], target.meala_gso);
+	target.meala_vehicle_id = text_or(table["vehicle_id"], target.meala_vehicle_id);
+}
+
 } // namespace
 
 std::string resolve_config_path(int argc, char** argv)
@@ -209,6 +240,7 @@ Config load_config(const std::string& path)
 	config.local.api_key = trim(local["api_key"].value_or<std::string>(""));
 	load_backend(local, config.local);
 	config.local.credentials_file = trim(local["credentials_file"].value_or<std::string>(""));
+	load_meala_fields(local, config.local);
 
 	config.remote.name = kTargetRemote;
 	config.remote.url = value_or<std::string>(remote["url"], file["remote_server"], "https://review.px4.io");
@@ -218,6 +250,7 @@ Config load_config(const std::string& path)
 	config.remote.api_key = trim(value_or<std::string>(remote["api_key"], file["remote_api_key"], ""));
 	load_backend(remote, config.remote);
 	config.remote.credentials_file = trim(remote["credentials_file"].value_or<std::string>(""));
+	load_meala_fields(remote, config.remote);
 
 	if (config.local.url.empty()) {
 		config.local.enabled = false;

@@ -38,6 +38,13 @@ struct UploadTargetConfig {
 	// a target without this cannot be enabled.
 	std::string credentials_file;
 	bool public_logs {false};
+	// Meala only: what each upload fills its form fields with. Meala requires
+	// every field to be present, so empty is sent as an empty field.
+	std::string meala_comment {"Uploaded by logloader"};
+	std::string meala_battery;
+	std::string meala_pic;
+	std::string meala_gso;
+	std::string meala_vehicle_id;
 };
 
 struct Config {

@@ -199,14 +199,14 @@ UploadTarget::Result MealaUploadTarget::upload(const std::string& file_path)
 			return {Outcome::Missing, 0, "local file ended early: " + file_path, ""};
 		}
 
-		// Meala reads every one of these off the form. The ones an automated
-		// upload has nothing to say about still have to be present.
+		// Meala reads every one of these off the form, so the ones left empty in
+		// the config still have to be present.
 		const httplib::MultipartFormDataItems fields = {
-			{"comments", "Uploaded by logloader", "", ""},
-			{"battery", "", "", ""},
-			{"pic", "", "", ""},
-			{"gso", "", "", ""},
-			{"vehicle_id", "", "", ""},
+			{"comments", _config.meala_comment, "", ""},
+			{"battery", _config.meala_battery, "", ""},
+			{"pic", _config.meala_pic, "", ""},
+			{"gso", _config.meala_gso, "", ""},
+			{"vehicle_id", _config.meala_vehicle_id, "", ""},
 			{"dzchunkbyteoffset", std::to_string(offset), "", ""},
 			{"dzchunkindex", std::to_string(index), "", ""},
 			{"dztotalchunkcount", std::to_string(total_chunks), "", ""},
